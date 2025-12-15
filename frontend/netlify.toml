@@ -1,0 +1,22 @@
+# Netlify configuration
+[build]
+  command = "npm run build:windows"
+  publish = "build"
+
+# Environment variables for production
+# Update REACT_APP_API_URL with your backend URL after deploying backend
+[build.environment]
+  REACT_APP_API_URL = "https://your-backend-url.com"
+
+# Redirect all routes to index.html for client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# HTTPS redirect
+[[redirects]]
+  from = "http://*"
+  to = "https://:splat"
+  status = 301
+  force = true

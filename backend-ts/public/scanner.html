@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR Attendance Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px 20px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+
+    .content {
+      padding: 20px;
+    }
+
+    #reader {
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .status-card {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      border-left: 4px solid #667eea;
+    }
+
+    .status-card h3 {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-card p {
+      font-size: 16px;
+      color: #333;
+      word-break: break-all;
+    }
+
+    .response-card {
+      background: #d4edda;
+      border-left: 4px solid #28a745;
+      padding: 16px;
+      border-radius: 8px;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .response-card.error {
+      background: #f8d7da;
+      border-left-color: #dc3545;
+    }
+
+    .response-card h4 {
+      margin-bottom: 8px;
+      color: #155724;
+      font-size: 16px;
+    }
+
+    .response-card.error h4 {
+      color: #721c24;
+    }
+
+    .response-card p {
+      font-size: 14px;
+      color: #155724;
+      margin: 4px 0;
+    }
+
+    .response-card.error p {
+      color: #721c24;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-bottom: 12px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 3px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📱 QR Attendance Scanner</h1>
+      <p>Scan student QR codes to record attendance</p>
+    </div>
+
+    <div class="content">
+      <div id="reader"></div>
+
+      <div class="status-card" id="statusCard" style="display: none;">
+        <h3>Last Scanned</h3>
+        <p id="statusText">-</p>
+      </div>
+
+      <div class="response-card" id="responseCard">
+        <h4 id="responseTitle">Success</h4>
+        <p id="responseMessage"></p>
+        <p id="responseStudent"></p>
+      </div>
+
+      <button class="btn btn-primary" id="startBtn" onclick="startScanner()">
+        Start Scanner
+      </button>
+      <button class="btn btn-secondary" id="stopBtn" onclick="stopScanner()" style="display: none;">
+        Stop Scanner
+      </button>
+    </div>
+
+    <div class="footer">
+      <p>QR Attendance System v1.0</p>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:8080/attendance/scan';
+    const API_KEY = ''; // Set if API key authentication is enabled
+    
+    let html5QrCode = null;
+    let isScanning = false;
+    let lastScanTime = 0;
+    const DEBOUNCE_MS = 3000; // 3 seconds debounce
+
+    async function startScanner() {
+      try {
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('startBtn').innerHTML = '<span class="loading"></span> Starting...';
+
+        html5QrCode = new Html5Qrcode("reader");
+        
+        const config = {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0
+        };
+
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          onScanSuccess,
+          onScanError
+        );
+
+        isScanning = true;
+        document.getElementById('startBtn').style.display = 'none';
+        document.getElementById('stopBtn').style.display = 'block';
+      } catch (err) {
+        console.error('Error starting scanner:', err);
+        alert('Failed to start scanner. Please check camera permissions.');
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('startBtn').textContent = 'Start Scanner';
+      }
+    }
+
+    async function stopScanner() {
+      if (html5QrCode && isScanning) {
+        await html5QrCode.stop();
+        html5QrCode.clear();
+        isScanning = false;
+        document.getElementById('startBtn').style.display = 'block';
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('startBtn').textContent = 'Start Scanner';
+        document.getElementById('stopBtn').style.display = 'none';
+      }
+    }
+
+    function onScanSuccess(decodedText, decodedResult) {
+      // Debounce repeated scans
+      const now = Date.now();
+      if (now - lastScanTime < DEBOUNCE_MS) {
+        return;
+      }
+      lastScanTime = now;
+
+      // Show scanned data
+      document.getElementById('statusCard').style.display = 'block';
+      document.getElementById('statusText').textContent = decodedText;
+
+      // Parse QR data (try JSON first, fallback to plain text)
+      let extra = null;
+      try {
+        const parsed = JSON.parse(decodedText);
+        if (parsed && typeof parsed === 'object') {
+          extra = parsed;
+        }
+      } catch (e) {
+        // Not JSON, will use as plain studentId
+      }
+
+      // Send to backend
+      sendAttendance(decodedText, extra);
+    }
+
+    function onScanError(errorMessage) {
+      // Ignore scan errors (they happen frequently during scanning)
+      // console.log(errorMessage);
+    }
+
+    async function sendAttendance(qrData, extra) {
+      try {
+        const headers = {
+          'Content-Type': 'application/json'
+        };
+
+        if (API_KEY) {
+          headers['x-api-key'] = API_KEY;
+        }
+
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({
+            qrData,
+            extra,
+            scannedAt: new Date().toISOString()
+          })
+        });
+
+        const data = await response.json();
+        displayResponse(response.ok, data);
+      } catch (error) {
+        displayResponse(false, { error: 'Network error', message: error.message });
+      }
+    }
+
+    function displayResponse(success, data) {
+      const responseCard = document.getElementById('responseCard');
+      const responseTitle = document.getElementById('responseTitle');
+      const responseMessage = document.getElementById('responseMessage');
+      const responseStudent = document.getElementById('responseStudent');
+
+      responseCard.style.display = 'block';
+      responseCard.className = 'response-card ' + (success ? '' : 'error');
+
+      if (success) {
+        responseTitle.textContent = '✓ ' + (data.message || 'Success');
+        responseMessage.textContent = `Student ID: ${data.studentId}`;
+        
+        if (data.student && data.student.name) {
+          responseStudent.textContent = `Name: ${data.student.name} | Class: ${data.student.class || 'N/A'}`;
+        } else {
+          responseStudent.textContent = 'Student details not found in database';
+        }
+      } else {
+        responseTitle.textContent = '✗ ' + (data.error || 'Error');
+        responseMessage.textContent = data.message || 'Failed to record attendance';
+        responseStudent.textContent = '';
+      }
+
+      // Auto-hide after 5 seconds
+      setTimeout(() => {
+        responseCard.style.display = 'none';
+      }, 5000);
+    }
+
+    // Auto-start scanner on page load (optional)
+    // window.onload = () => startScanner();
+  </script>
+</body>
+</html>

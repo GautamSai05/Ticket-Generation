@@ -1,0 +1,3 @@
+- [x] Add helper function getStudentDetails in attendance.ts
+- [x] Modify POST /scan handler to use the helper
+- [ ] Test the updated functionality
