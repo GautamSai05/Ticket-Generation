@@ -8,7 +8,7 @@ import cors from 'cors';
 import express, { NextFunction, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import './firebaseConfig.js'; // Initialize Firebase
-import attendanceRouter from './routes/attendance.ts';
+import attendanceRouter from './routes/attendance.js';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
