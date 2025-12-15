@@ -1,70 +1,66 @@
-// src/server.ts
+// src/server.ts - Express server setup
 // Main Express server with middleware, CORS, rate limiting, and API key authentication
 
-import cors from "cors";
-import dotenv from "dotenv";
-import express from "express";
-import rateLimit from "express-rate-limit";
-import attendanceRouter from "./routes/attendance.js";
-
+import dotenv from 'dotenv';
 dotenv.config();
 
-const app = express();
+import cors from 'cors';
+import express, { NextFunction, Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
+import './firebaseConfig.js'; // Initialize Firebase
+import attendanceRouter from './routes/attendance.js';
 
-// Enable CORS for local development
+const app = express();
+const PORT = process.env.PORT || 8080;
+
+// Middleware
+app.use(express.json());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || "*",
-  methods: ["GET", "POST"],
+  origin: process.env.CORS_ORIGIN || '*',
+  credentials: true
 }));
 
-// Parse JSON bodies (limit to 5MB)
-app.use(express.json({ limit: "5mb" }));
-
-// Rate limiter: 20 requests per minute per IP for /attendance routes
-const attendanceLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 20, // limit each IP to 20 requests per windowMs
-  message: "Too many requests from this IP, please try again later.",
-  standardHeaders: true,
-  legacyHeaders: false,
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20, // 20 requests per minute
+  message: 'Too many requests, please try again later.'
 });
 
-// API key authentication middleware (optional, enabled if API_KEY is set)
-const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  // Skip auth if API_KEY is not configured
-  if (!process.env.API_KEY) {
-    return next();
-  }
+// Apply rate limiter to scan endpoint
+app.use('/attendance/scan', limiter);
 
-  const apiKey = req.headers["x-api-key"];
-  if (!apiKey || apiKey !== process.env.API_KEY) {
-    return res.status(401).json({ error: "Unauthorized: Invalid or missing API key" });
-  }
-  next();
-};
+// Optional API key authentication
+if (process.env.API_KEY) {
+  app.use('/attendance', (req: Request, res: Response, next: NextFunction) => {
+    const apiKey = req.header('x-api-key');
+    if (apiKey !== process.env.API_KEY) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    next();
+  });
+}
 
 // Health check endpoint
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+app.get('/health', (req: Request, res: Response) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
 });
 
-// Mount attendance routes with rate limiting and optional auth
-app.use("/attendance", attendanceLimiter, authMiddleware, attendanceRouter);
+// Routes
+app.use('/attendance', attendanceRouter);
 
 // 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: "Route not found" });
+app.use((req: Request, res: Response) => {
+  res.status(404).json({ error: 'Not found' });
 });
 
 // Start server
-const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`   Health check: http://localhost:${PORT}/health`);
-  console.log(`   Attendance API: http://localhost:${PORT}/attendance/scan`);
-  if (process.env.API_KEY) {
-    console.log(`   API Key authentication: ENABLED`);
-  } else {
-    console.log(`   API Key authentication: DISABLED (set API_KEY in .env to enable)`);
-  }
+  console.log(`✓ Server running on port ${PORT}`);
+  console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`✓ Health check: http://localhost:${PORT}/health`);
 });
