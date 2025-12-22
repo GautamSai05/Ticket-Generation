@@ -5,6 +5,91 @@ import { db } from "../firebaseConfig.js";
 const router = Router();
 
 /**
+ * POST /attendance - Save QR data to Firebase (Scanner Integration)
+ * Accepts structured QR data from the scanner and stores it in Firebase
+ */
+router.post(
+  "/",
+  async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const { name, email, eventId, qrData, timestamp, scannedAt } = req.body;
+
+      // Validate required fields
+      if (!qrData || typeof qrData !== "string") {
+        return res.status(400).json({ error: "Invalid qrData" });
+      }
+
+      // Create attendance record
+      const attendanceCollection = process.env.FIRESTORE_COLLECTION || "attendance";
+      const attendanceRecord = {
+        name: name || "Unknown",
+        email: email || "",
+        eventId: eventId || "",
+        qrData,
+        timestamp: timestamp || Date.now(),
+        scannedAt: scannedAt || new Date().toISOString(),
+        recordedAt: admin.firestore.FieldValue.serverTimestamp(),
+        source: {
+          ip: req.ip,
+          userAgent: req.get("user-agent"),
+        },
+      };
+
+      const docRef = await db.collection(attendanceCollection).add(attendanceRecord);
+
+      // Return response in the format expected by scanner
+      return res.status(201).json({
+        id: docRef.id,
+        name: attendanceRecord.name,
+        email: attendanceRecord.email,
+        timestamp: attendanceRecord.timestamp,
+        qrData: attendanceRecord.qrData,
+      });
+    } catch (error: any) {
+      console.error("Error saving attendance:", error);
+      return res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+  }
+);
+
+/**
+ * GET /attendance - Fetch all attendance from Firebase
+ * Returns all attendance records in an array format
+ */
+router.get(
+  "/",
+  async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const attendanceCollection = process.env.FIRESTORE_COLLECTION || "attendance";
+
+      const snapshot = await db
+        .collection(attendanceCollection)
+        .orderBy("scannedAt", "desc")
+        .get();
+
+      const records = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name || data.student?.name || "Unknown",
+          email: data.email || data.student?.email || "",
+          timestamp: data.timestamp || data.scannedAt?.toMillis?.() || Date.now(),
+          qrData: data.qrData || "",
+          scannedAt: data.scannedAt,
+          eventId: data.eventId || "",
+        };
+      });
+
+      // Return direct array as per documentation
+      return res.json(records);
+    } catch (error: any) {
+      console.error("Error fetching attendance:", error);
+      return res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+  }
+);
+
+/**
  * POST /attendance/scan - Record attendance from QR scan
  */
 router.post(
